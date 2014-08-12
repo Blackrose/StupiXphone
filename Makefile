@@ -36,8 +36,9 @@ BAUD_RATE=115200
 
 #Compiler and uploader configuration
 ARDUINO_CORE=$(ARDUINO_DIR)/hardware/arduino/cores/arduino
+ARDUINO_SKETCHBOOK=$(HOME)/sketchbook
 INCLUDE=-I. -I$(ARDUINO_DIR)/hardware/arduino/cores/arduino \
-		-I$(ARDUINO_DIR)/hardware/arduino/variants/mega -I../sketchbook/libraries/Keypad
+		-I$(ARDUINO_DIR)/hardware/arduino/variants/mega -I$(ARDUINO_SKETCHBOOK)/libraries/Keypad
 
 TMP_DIR=./build_arduino
 MCU=atmega2560
@@ -55,7 +56,6 @@ CORE_C_FILES=WInterrupts wiring_analog wiring wiring_digital \
 	     wiring_pulse wiring_shift
 CORE_CPP_FILES=HardwareSerial main Print Tone WMath WString
 SKETCH_SRC=$(wildcard *.cpp)
-ARDUINO_SKETCHBOOK=../sketchbook
 
 # Local resources
 LOCAL_C_SRCS    ?= $(wildcard *.c)
@@ -175,11 +175,11 @@ $(TMP_OBJS): $(LIB_SRCS)
 	@#$(CPP) -mmcu=$(MCU) $(INCLUDE) $(USER_LIBS_INCLUDE) -DARDUINO=150 $(CPP_FLAGS) -c $^
 
 	$(CPP) -c -mmcu=$(MCU) -DF_CPU=$(DF_CPU) $(INCLUDE) $(USER_LIBS_INCLUDE) -DARDUINO=150 \
-		$(CPP_FLAGS) ../sketchbook/libraries/Keypad/Keypad.cpp \
+		$(CPP_FLAGS) $(ARDUINO_SKETCHBOOK)/libraries/Keypad/Keypad.cpp \
 		-o $(TMP_DIR)/Keypad.o
 
 	$(CPP) -c -mmcu=$(MCU) -DF_CPU=$(DF_CPU) $(INCLUDE) $(USER_LIBS_INCLUDE) -DARDUINO=150 \
-		$(CPP_FLAGS) ../sketchbook/libraries/Keypad/utility/Key.cpp \
+		$(CPP_FLAGS) $(ARDUINO_SKETCHBOOK)/libraries/Keypad/utility/Key.cpp \
 		-o $(TMP_DIR)/Key.o
 
 
