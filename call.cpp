@@ -13,7 +13,7 @@ void gsm_dial(char *number)
     char buf[30];
 
     sprintf(buf, "ATD%s;\r\n", number);
-    at_send(buf, NULL);
+    gsm_send(buf, NULL);
 
 }
 
@@ -26,7 +26,7 @@ void gsm_hangup()
     call_init_state = HOLD_STATE;
     
     strcpy(buf, "ATH\r\n");
-    at_send(buf, NULL);
+    gsm_send(buf, NULL);
 
     //recv_gsm(NULL);
     if(cb_isempty(cb))
@@ -149,7 +149,7 @@ void gsm_incoming()
     char number[20];
 
     strcpy(buf, "AT+CLCC\r\n");
-    at_send(buf, NULL);
+    gsm_send(buf, NULL);
             
     recv_gsm(NULL);
     cb_read(cb, &elem);
@@ -175,7 +175,7 @@ void gsm_call_answer()
     unsigned int ret = 0;
     
             strcpy(buf, "ATA\r\n");
-            at_send(buf, NULL);
+            gsm_send(buf, NULL);
             ring_flag = false;
             ans_flag = true;
 #if 1

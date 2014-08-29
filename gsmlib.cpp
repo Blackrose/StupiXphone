@@ -4,24 +4,20 @@
 #include "circular_buffer.h"
 #include "call.h"
 
-void debug_prt(char *buf, unsigned int len);
 extern Circular_Buffer *cb;
 void init_gsm()
 {
     Serial1.begin(9600);
 }
 
-void at_send(char *command, char *result)
+void gsm_send(char *command, char *result)
 {
-    char cgmm[200];
     char tmp, *ptr = NULL;
     unsigned int flag = 0;
     int sz;
     int i, j, k;
     int ret;
     
-    memset(cgmm, 0, sizeof(cgmm));
-   
     Serial1.write(command);
     delay(100);
 
@@ -34,7 +30,6 @@ void at_send(char *command, char *result)
     while(cgmm[i])
         Serial.println(cgmm[i++]);
 #endif
-
 
 }
 
@@ -57,11 +52,16 @@ int recv_gsm(char *result)
         return 0;
 
     for(i = 0, j = 0; i < sz; i++){
+#if 0
         tmp = char(Serial1.read());
         if(tmp == 0xd || tmp == 0xa)
             continue;
         else
             cgmm[j++] = tmp;
+#else
+        tmp = char(Serial1.read());
+        cgmm[j++] = tmp;
+#endif
     }
 
     if(j <= 0 || cgmm[0] == 0)
@@ -69,6 +69,7 @@ int recv_gsm(char *result)
 
     memcpy(elem.data, cgmm, j);
     elem.len = j;
+
 #if 0
     i = 0;
     while(i != j){
@@ -136,7 +137,7 @@ void debug_prt(char *buf, unsigned int len)
     int i;
     for(i = 0; i < len; i++){
         Serial.print(buf[i], HEX);
-        Serial.print("\t");
+        Serial.print(" ");
     }
     Serial.print("\r\n");
 }
@@ -151,7 +152,27 @@ void debug_prt(char *buf, unsigned int len)
 void gsm_echo_mode(bool flag)
 {
     if(flag)
-        at_send("ATE1", NULL);
+        gsm_send("ATE1\r\n", NULL);
     else
-        at_send("ATE0", NULL);
+        gsm_send("ATE0\r\n", NULL);
+}
+
+void debug_gsm_cmd(char *command, unsigned int recv_mode)
+{
+    char tmp_buf[100];
+    unsigned read_sz;
+
+    if(!recv_mode){
+        Serial1.write(command);
+    }
+    delay(100);
+    read_sz = Serial1.available();
+    if(read_sz > 0){
+        memset(tmp_buf, 0, sizeof(tmp_buf));
+        for(int i = 0; i < read_sz; i++){
+            tmp_buf[i] = Serial1.read();
+        }
+        Serial.println(tmp_buf);
+    }
+
 }

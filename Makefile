@@ -26,7 +26,7 @@ SKETCH_NAME=cellphone
 # The port Arduino is connected
 #  Uno, in GNU/linux: generally /dev/ttyACM0
 #  Duemilanove, in GNU/linux: generally /dev/ttyUSB0
-PORT=/dev/tty.usbmodem1421
+PORT=/dev/cu.usbmodem1421
 # The path of Arduino IDE
 ARDUINO_DIR=$(HOME)/arduino-1.0.5
 # Boardy type: use "arduino" for Uno or "stk500v1" for Duemilanove
