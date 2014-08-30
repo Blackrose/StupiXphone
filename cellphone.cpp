@@ -14,8 +14,6 @@
 Circular_Buffer *cb;
 
 Keypad keypad = Keypad(makeKeymap(hexkey), row_pins, col_pins, ROWS, COLS);
-int try_lock();
-void unlock();
 
 void home_proc(char keycode);
 void sms_proc(char keycode);
@@ -38,7 +36,7 @@ struct UILabel setting_label[] = {
 };
 
 struct UILabel call_label[] = {
-    {"", 0, 3,}
+    {"", 0, 2,}
 };
 struct UILabel sysinfo_label[] = {
     {"ModuleInfo", 0, 0},
@@ -151,8 +149,8 @@ struct menuitem home_screen = {
     .label_cnt = 1,
 };
 
-struct menuitem *current_menu = &home_screen;
-struct menuitem *root_screen = &home_screen;
+struct menuitem *current_menu = NULL;
+struct menuitem *root_screen = NULL;
 
 void get_vendor_name();
 void get_operator(char *);
@@ -221,31 +219,30 @@ struct menuitem* search_node(struct menuitem *node, unsigned int name)
 
 void home_proc(char keycode)
 {
-    if(keycode == KEY_ENTER){
-        current_menu = &sms_menu;
-        update_gui_ready();
-        //menu_screen();
+    switch(keycode){
+        case KEY_ENTER:
+            current_menu = &sms_menu;
+            update_gui_ready();
+            break;
+        case KEY_CALL:
+            current_menu = &dial_screen;
+            update_gui_ready();
+            break;
+        case KEY_QUIT:
+            current_menu = &home_screen;
+        default:
+            break;
     }
+            menu_screen();
+        //lcd_set_xy(current_menu->label[0].pos_x, current_menu->label[0].pos_y);
+        //lcd_string(current_menu->label[0].text);
 
-    
-    if(keycode == KEY_CALL){
-        current_menu = &dial_screen;
-        update_gui_ready();
-        //menu_screen();
-    }
-   
-    
-    if(keycode == KEY_QUIT){
-        current_menu = &home_screen;
-        //menu_screen();
-    }
-        menu_screen();
-
-
+#if 1
     if(get_call_state() != END_STATE){
         current_menu = &dial_screen;
         update_gui_ready();
     }
+#endif
 }
 
 void sms_proc(char keycode)
@@ -338,6 +335,7 @@ void sysinfo_proc(char keycode)
 
 }
 
+char income_number[20] = {0};
 unsigned int dial_index = 0;
 char dial_number[20] = "\0";
 bool dial_flag = false;
@@ -348,7 +346,7 @@ void dial_proc(char keycode)
     if(keycode == KEY_QUIT){
         if(dial_flag)
             gsm_hangup();
-        //lcd_clear();
+        lcd_clear();
         memset(dial_number, '\0', sizeof(dial_number));
         dial_index = 0;
         current_menu = &home_screen;
@@ -357,13 +355,17 @@ void dial_proc(char keycode)
     }
 
     if(keycode == KEY_CALL){
-        if(get_call_state() == END_STATE){
-        gsm_dial(dial_number);
-        dial_flag = true;
+        switch(get_call_state()){
+            case END_STATE:
+                gsm_dial(dial_number);
+                dial_flag = true;
+                break;
+            case CALL_STATE:
+                gsm_call_answer();
+                break;
+            default:
+                break;
         }
-
-        if(get_call_state() == CALL_STATE)
-            gsm_call_answer();
     }
 
     if(keycode == KEY_HOLD)
@@ -414,7 +416,17 @@ void dial_proc(char keycode)
             call_label[0].text = "";
             break;
         case CALL_STATE:
-            call_label[0].text = "Calling";
+            {
+            char buf[30] = {0};
+            strcpy(buf, "IncomingCall");
+            strcat(buf, income_number);
+            Serial.println(buf);
+            display_string(2, 0, buf);
+            //memcpy(call_label[0].text, buf, strlen(buf));
+
+            clean_btn.text = "Decline";
+            dial_btn.text = "Answer";
+            }
             break;
         default:
             break;
@@ -426,6 +438,9 @@ void dial_proc(char keycode)
 
 void init_menu()
 {
+
+    current_menu = &home_screen;
+    root_screen = &home_screen;
     
 }
  
@@ -517,7 +532,7 @@ void get_sim_stat()
 #endif
 }
 
-int get_operator_state = 0;
+static char gsm_operator_state = 0x0;
 void get_operator()
 {
     char *ptr = buffer1[0];
@@ -530,38 +545,43 @@ void get_operator()
     int i;
     char *value_p;
 
-    switch(get_operator_state){
-        case 0:
+    memset(operator_name, 0, sizeof(operator_name));
+
+    switch(gsm_operator_state){
+        case 0x0:
             if(try_lock()){
                 memset(buffer1, 0, sizeof(buffer1));
                 gsm_send("AT+COPS?\r\n", NULL);
-                get_operator_state = 1;
+                gsm_operator_state = 0x1;
             }
             break;
-        case 1:
+        case 0x1:
             if(!cb_isempty(cb)){
                 cb_read(cb, &elem);
-                //Serial.println(elem.data);
-                
-                memset(operator_name, 0, sizeof(operator_name));
+               
+                if(strstr(elem.data, "+COPS") == NULL){
+                    debug_prt(elem.data, elem.len);
+                    goto FIN;
+                }
+
                 memset(tmp, 0, sizeof(tmp));
-                memcpy(tmp, elem.data+9, elem.len - 9 - 6);
+                memcpy(tmp, elem.data+9, elem.len - 9 - 5);
                 tmp[elem.len + 1] = '\0';
-                //Serial.println(tmp);
-                
-                //+COPS: 0,0,"CHN-CUGSM"OK
-                sscanf(tmp, "%d,%d,\"%s\"", &mode, &format, operator_name);
+                //\r\n+COPS: 0,0,"CHN-CUGSM"\r\nOK\r\n
+                sscanf(tmp, "%d,%d,\"%s", &mode, &format, operator_name);
                 //Serial.println(operator_name);
+                
+                // remove the last colon character
                 for(i = 0; i < strlen(operator_name); i++){
                     if(operator_name[i] == 0x22)
                         flag = true;
                     if(flag)
                         operator_name[i] = '\0';
                 }
-        
-                unlock();
-                get_operator_state = 0;
             }
+FIN:
+            unlock();
+            gsm_operator_state = 0x0;
             break;
         default:
             break;
@@ -570,7 +590,7 @@ void get_operator()
     if(operator_name){
         strcpy(MODULE_INFO.module_operator, operator_name);
     }else
-        strcpy(MODULE_INFO.module_operator, "NULL");
+        strcpy(MODULE_INFO.module_operator, "NoService");
 
 #if 0
     Serial.println(mode);
@@ -579,66 +599,9 @@ void get_operator()
     Serial.println(ok_flag);
 #endif
 
-#if 0
-    Serial.println(buffer1[0]);
-    Serial.println(buffer1[1]);
-    Serial.println(buffer1[2]);
+#if 1
     Serial.println(MODULE_INFO.module_operator);
 #endif
-}
-
-void gsm_rtc()
-{
-    ElemType elem;
-    char buf[30];
-    char tmp[30];
-    
-    strcpy(buf, "AT+CCLK?\r\n");
-    gsm_send(buf, NULL);
-
-    //recv_gsm(NULL);
-    if(cb_isempty(cb))
-        return;
-
-        cb_read(cb, &elem);
-        Serial.println(elem.data);
-#if 0 
-        memset(tmp, 0, sizeof(tmp));
-        memcpy(tmp, elem.data, elem.len);
-        tmp[elem.len+1] = '\n';
-
-        if(strcmp(tmp, "OK") == 0){
-            call_init_state = END_STATE;
-            return;
-        }
-#endif
-
-}
-
-void gsm_csq()
-{
-    char *ptr = buffer1[0];
-    unsigned int rssi = 0xff, ber = 0xff;
-    char operator_name[20];
-
-    memset(buffer1, 0, sizeof(buffer1));
-    memset(operator_name, 0, sizeof(operator_name));
-    gsm_send("AT+CSQ\r\n", ptr);
-
-    
-    sscanf(buffer1[1], "+CSQ: %d,%d", &rssi, &ber);
-    if(rssi != 0xff){
-        MODULE_INFO.module_csq = (rssi < 8) | ber;
-    }else
-        MODULE_INFO.module_csq = 0;
-#if 0
-    Serial.println(buffer1[0]);
-    Serial.println(buffer1[1]);
-    Serial.println(buffer1[2]);
-    Serial.println(MODULE_INFO.module_operator);
-#endif
-
-
 }
 
 void gsm_sms_format()
@@ -675,7 +638,6 @@ void gsm_sendsms()
     cb_read(cb, &elem);
     debug_prt(elem.data, elem.len);
 #endif 
-    //sscanf(buffer1[1], "+CSQ: %d,%d", &rssi, &ber);
 
 }
 
@@ -716,8 +678,11 @@ void setup(void)
 {
     pinMode(22, INPUT);
     pinMode(23, INPUT);
+
+    // RING pin from GSM
+    //pinMode(53, INPUT);
    
-    cb_init(cb, 50);
+    cb_init(cb, 10);
 
     Serial.begin(9600);
     init_gsm();
@@ -725,11 +690,7 @@ void setup(void)
     gsm_echo_mode(false);
     
     lcd_init();
-#if 0  
-    memset(buffer1, 0, sizeof(buffer1));
-    exec_atcommand("ATE0\r\n", NULL);
-#endif 
-
+    
     memset(&MODULE_INFO, 0, sizeof(struct module_info));
 #if 0
     get_module_id();
@@ -744,48 +705,60 @@ void setup(void)
 
     lcd_clear();
     //main_screen();
-    //menu_screen();
+    menu_screen();
         
 }
-bool flag = false;
+bool operator_flag = false;
 bool recv_done = false;
 char keycode;
 ElemType elem;
 unsigned int gsm_opr_cnt = 0;
 void loop(void)
 {
-    delay(200);
 #if 0
+    //get_operator();
+    //gsm_call_check();
+    //gsm_query_call(income_number);
+    //gsm_query_me_state();
+    //debug_gsm_cmd("AT+CPAS\r\n", 0);
+    /*
     keycode = keypad.getKey();
     if(keycode == KEY_1){
     Serial.println("this is seprate line--------");
-    debug_gsm_cmd("ATD13720405960;\r\n", 0);
-    flag = true;
+    //debug_gsm_cmd("ATD;\r\n", 0);
+    //flag = true;
     }
-    if(flag == false)
-        debug_gsm_cmd("AT\r\n", 0);
-#endif
+    */
+    //debug_gsm_cmd("AT+COPS?\r\n", 0);
     //debug_gsm_cmd(NULL, 1);
-        get_operator();
+    delay(100);
     recv_gsm(NULL);
-    Serial.println(MODULE_INFO.module_operator);
+#endif
 
-#if 0
     if(get_gui_flag()){
         lcd_clear();
         update_gui_done();
         menu_screen();
     }
-        
-    recv_gsm(NULL);
-    gsm_opr_cnt++;
-    if(gsm_opr_cnt > 100){
-        get_operator();
-        gsm_opr_cnt = 0;
-    }
+
+    delay(10);
+    gsm_call_check();
+    gsm_query_call(income_number);
+    gsm_query_me_state();
+
     
+    if(gsm_opr_cnt++ > 10){
+        operator_flag = true;
+        gsm_opr_cnt = 0;
+    }else
+        operator_flag = false;
+    
+    if(gsm_opr_cnt < 2)
+        get_operator();
+
     keycode = keypad.getKey();
     current_menu->proc(keycode);
-#endif
+    
+    recv_gsm(NULL);
         
 }

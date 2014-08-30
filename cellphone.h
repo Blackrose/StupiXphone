@@ -81,4 +81,6 @@ enum screen_name{
     SYSINFO_SCN,
 };
 
+int try_lock();
+void unlock();
 #endif

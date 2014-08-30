@@ -4,6 +4,8 @@
 #include "circular_buffer.h"
 #include "call.h"
 
+//#define RECV_DEBUG
+
 extern Circular_Buffer *cb;
 void init_gsm()
 {
@@ -15,17 +17,13 @@ void gsm_send(char *command, char *result)
     char tmp, *ptr = NULL;
     unsigned int flag = 0;
     int sz;
-    int i, j, k;
+    int i;
     int ret;
     
     Serial1.write(command);
     delay(100);
 
 #if 0
-    Serial.println(&result[0]);
-    Serial.println(&result[1]);
-    Serial.println(&result[2]);
-    
     i = 0;
     while(cgmm[i])
         Serial.println(cgmm[i++]);
@@ -46,12 +44,10 @@ int recv_gsm(char *result)
     memset(cgmm, 0, sizeof(cgmm));
     memset(&elem, 0, sizeof(ElemType));
 
-    delay(100);
-    sz = Serial1.available();
-    if(sz <= 0)
-        return 0;
+    delay(150);
+    if((sz = Serial1.available()) > 0){
 
-    for(i = 0, j = 0; i < sz; i++){
+        for(i = 0, j = 0; i < sz; i++){
 #if 0
         tmp = char(Serial1.read());
         if(tmp == 0xd || tmp == 0xa)
@@ -59,69 +55,23 @@ int recv_gsm(char *result)
         else
             cgmm[j++] = tmp;
 #else
-        tmp = char(Serial1.read());
+        tmp = char(Serial1.read()) & 0xff;
         cgmm[j++] = tmp;
 #endif
-    }
-
-    if(j <= 0 || cgmm[0] == 0)
-        return 0;
-
-    memcpy(elem.data, cgmm, j);
-    elem.len = j;
-
-#if 0
-    i = 0;
-    while(i != j){
-        Serial.print(elem.data[i++], HEX);
-        Serial.print("\t");
-    }
-    Serial.println("\r\n");
-    //debug_prt(cgmm, j);
-    cgmm[j+1] = '\0';
-    if(strcmp(cgmm, "RING") == 0){
-        Serial.println(cgmm);
-        gsm_call_check();
-    }else{
-        cb_write(cb, &elem);
-    }
-#endif
-        cb_write(cb, &elem);
-
-#if 0
-    j = k = 0;
-    for(i = 0; i < strlen(cgmm); i++){
-        if(cgmm[i] == 0xd)
-            continue;
-        if(cgmm[i] == 0xa){
-            *(result+j*100+k) = '\0';
-            ++k;
-            if(strcmp((result+j*100), "") != 0){
-                j += 1;
-                k = 0;
-            }else{
-                k = 0;
-            }
-        }else{
-            *(result+j*100+k) = cgmm[i];
-            ++k;
         }
+        if(cgmm[sz - 1] != 0xa || cgmm[sz - 2] != 0xd)
+            goto ERROR;
+#ifdef RECV_DEBUG
+    Serial.println(sz);
+    //Serial.println(cgmm);
+    debug_prt(cgmm, sz);
+#endif
+        memcpy(elem.data, cgmm, j);
+        elem.len = j;
+
+        cb_write(cb, &elem);
     }
-#endif
-#if 0
-    if(strcmp((result+j*100), "OK") == 0){
-        ret = 0;
-    }else
-        ret = -1;
-#endif
-#if 0
-    if(result[0]){
-    Serial.println(&result[0]);
-    Serial.println(&result[1]);
-    Serial.println(&result[2]);
-    }
-    
-#endif
+
 #if 0
     if(k == 0 && j < 2)
         ret = 0;
@@ -129,6 +79,8 @@ int recv_gsm(char *result)
         ret = 1;
     return ret;
 #endif
+ERROR:
+    return sz;
 
 }
 
@@ -155,6 +107,8 @@ void gsm_echo_mode(bool flag)
         gsm_send("ATE1\r\n", NULL);
     else
         gsm_send("ATE0\r\n", NULL);
+
+    delay(100);
 }
 
 void debug_gsm_cmd(char *command, unsigned int recv_mode)
@@ -172,7 +126,8 @@ void debug_gsm_cmd(char *command, unsigned int recv_mode)
         for(int i = 0; i < read_sz; i++){
             tmp_buf[i] = Serial1.read();
         }
-        Serial.println(tmp_buf);
+        //Serial.println(tmp_buf);
+        debug_prt(tmp_buf, read_sz);
     }
 
 }

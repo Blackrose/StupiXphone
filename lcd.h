@@ -32,5 +32,6 @@ void lcd_set_xy(int x, int y);
 void LcdCharacter(char character);
 
 void lcd_clear_row(unsigned int row);
+void display_string(int row, int column, char* content);
 
 #endif

@@ -5,8 +5,9 @@
 
 extern Circular_Buffer *cb;
 unsigned int call_init_state = END_STATE;
-void gsm_incoming();
 
+extern int try_lock();
+extern void unlock();
 
 void gsm_dial(char *number)
 {
@@ -109,59 +110,151 @@ void gsm_call(char *number)
 
 }
 
+int call_check_state = 0;
 bool ring_flag = false;
 void gsm_call_check()
 {
     ElemType elem;
-    char buf[30];
-    char tmp[30];
-
+    int i, j;
+    char tmp[30] = {0};
+    char ring_str[5] = "RING";
+#if 0
     if(ring_flag == false){
             ring_flag = true;
             call_init_state = CALL_STATE;
             gsm_incoming();
     }
+#endif
+#if 1
+        switch(call_check_state){
+            case 0:
+                if(try_lock()){
+                    call_check_state = 1;
+                }
+                break;
+            case 1:
+                if(!cb_isempty(cb)){
+                    cb_read(cb, &elem);
 #if 0
-    recv_gsm(NULL);
-
-    if(cb_isempty(cb))
-        return;
-
-        cb_read(cb, &elem);
-        //Serial.println(elem.data);
-
-        memset(tmp, 0, sizeof(tmp));
-        memcpy(tmp, elem.data, elem.len);
-        tmp[elem.len + 1] = '\0';
-        if(strcmp(tmp, "RING") == 0){
-            ring_flag = true;
-            call_init_state = CALL_STATE;
-            gsm_incoming();
-        }
+                    for(int i = 0; i < elem.len; i++)
+                        Serial.println(elem.data[i], HEX);
+#endif      
+                    // \r\nRING\r\n
+                    for(i = 0, j = 0; i < elem.len; i++){
+                        if(elem.data[i] == 0xd || elem.data[i] == 0xa)
+                            continue;
+                        if(elem.data[i] == ring_str[j])
+                            j += 1;
+                    }
+                    //Serial.println(j);
+                    if(j >= 3){
+                        ring_flag = true;
+                        sprintf(tmp, "%s, %s\n", __FUNCTION__, elem.data);
+                        Serial.print(tmp);
+                    }
+                }
+                unlock();
+                call_check_state = 0;
+                break;
+            default:
+                break;
+    }
 #endif
 }
 
-void gsm_incoming()
+int get_income_state = 0;
+void gsm_query_call(char *income_number)
 {
     char buf[30];
     ElemType elem;
     int idx,dir,stat,mode,mpty,ret;
     char number[20];
 
-    strcpy(buf, "AT+CLCC\r\n");
-    gsm_send(buf, NULL);
-            
-    recv_gsm(NULL);
-    cb_read(cb, &elem);
-    Serial.println(elem.data);
-#if 0 
-    /*
-     * AT+CLCC+CLCC: 1,1,4,0,0,"13720405960",161OK
-     */
-    memset(buf, 0, sizeof(buf));
-    memcpy(buf, elem.data+14, 30);
-    sscanf(buf, "%d,%d,%d,%d,%d,%s,161OK", &idx,&dir,&stat,&mode,&mpty,&number);
-    Serial.println(number);
+    if(!ring_flag)
+        return;
+    switch(get_income_state){
+        case 0:
+            if(try_lock()){
+                gsm_send("AT+CLCC\r\n", NULL);
+                get_income_state = 1;
+            }
+            break;
+        case 1:
+            if(!cb_isempty(cb)){
+                cb_read(cb, &elem);
+                if(strstr(elem.data, "+CLCC") == NULL)
+                    goto FIN;
+                // \r\n+CLCC: 1,1,4,0,0,"13720405960",161\r\nOK\r\n
+                memset(buf, 0, sizeof(buf));
+                memcpy(buf, elem.data+9, elem.len - 9 - 12);
+                //Serial.println(buf);
+#if 1
+                sscanf(buf, "%d,%d,%d,%d,%d,%s\r\n", &idx,&dir,&stat,&mode,&mpty,&number);
+                //Serial.println(number);
+                strcpy(income_number, number);
+                call_init_state = CALL_STATE;
+#endif
+            }
+FIN:
+            unlock();
+            get_income_state = 0;
+            break;
+        default:
+            break;
+    }
+
+}
+
+int get_me_state = 0;
+void gsm_query_me_state()
+{
+    char buf[30];
+    ElemType elem;
+    int me_state = -1;
+    char number[20];
+
+    switch(get_me_state){
+        case 0:
+            if(try_lock()){
+                gsm_send("AT+CPAS\r\n", NULL);
+                get_me_state = 1;
+            }
+            break;
+        case 1:
+            if(!cb_isempty(cb)){
+                cb_read(cb, &elem);
+                if(strstr(elem.data, "+CPAS") == NULL)
+                    goto FIN;
+                // \r\n+CPAS: 0\r\nOK\r\n
+                memset(buf, 0, sizeof(buf));
+                memcpy(buf, elem.data+2, elem.len - 2 - 6);
+                sscanf(buf, "+CPAS: %d", &me_state);
+                //Serial.println(buf);
+            }
+FIN:
+            unlock();
+            get_me_state = 0;
+            break;
+        default:
+            break;
+    }
+#if 1
+    switch(me_state){
+        case ME_READY:
+            if(ring_flag)
+                call_init_state = END_STATE;
+            break;
+        case ME_RING:
+            call_init_state = CALL_STATE;
+            break;
+        case ME_CALL:
+            call_init_state = CNT_STATE;
+            break;
+        case -1:
+            break;
+        default:
+            break;
+    }
 #endif
 }
 

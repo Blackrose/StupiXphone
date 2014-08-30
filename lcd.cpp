@@ -150,3 +150,9 @@ void Scroll(String message)
         scrollPosition = -10;
     }
 }
+
+void display_string(int row, int column, char* content)
+{
+    lcd_set_xy(column, row);
+    lcd_string(content);
+}
